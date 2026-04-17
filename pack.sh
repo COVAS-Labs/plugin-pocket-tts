@@ -40,7 +40,7 @@ if [ -f "requirements.txt" ]; then
 fi
 
 # Ensure PocketTTS model files and bundled reference audio are present
-if [ ! -f "model/lm_flow.int8.onnx" ] || [ ! -f "assets/voices/bria.wav" ]; then
+if [ ! -f "model/lm_flow.int8.onnx" ] || [ ! -f "assets/voices/selfie.wav" ]; then
     if [ -f "scripts/download_pocket_tts_assets.sh" ]; then
         echo "PocketTTS assets not found; downloading into ./model and ./assets/voices ..."
         chmod +x scripts/download_pocket_tts_assets.sh
@@ -55,7 +55,7 @@ fi
 artifacts=(
     "cn-plugin-pocket-tts.py"
     "requirements.txt"
-    "manifest.json" "__init__.py"
+    "manifest.json" "__init__.py" "THIRD_PARTY_NOTICES.md"
 )
 
 if [ -d "deps" ]; then

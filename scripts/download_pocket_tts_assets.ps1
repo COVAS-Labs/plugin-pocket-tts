@@ -7,6 +7,7 @@ $ArchiveName = "sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2"
 $ArchiveUrl = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$ArchiveName"
 $ExtractedDir = Join-Path $TmpDir "sherpa-onnx-pocket-tts-int8-2026-01-26"
 $ArchivePath = Join-Path $TmpDir $ArchiveName
+$DefaultVoiceUrl = "https://huggingface.co/kyutai/tts-voices/resolve/main/voice-donations/Selfie.wav"
 
 New-Item -ItemType Directory -Force -Path $ModelDir | Out-Null
 New-Item -ItemType Directory -Force -Path $VoiceDir | Out-Null
@@ -28,6 +29,6 @@ Copy-Item (Join-Path $ExtractedDir "decoder.int8.onnx") $ModelDir -Force
 Copy-Item (Join-Path $ExtractedDir "text_conditioner.onnx") $ModelDir -Force
 Copy-Item (Join-Path $ExtractedDir "vocab.json") $ModelDir -Force
 Copy-Item (Join-Path $ExtractedDir "token_scores.json") $ModelDir -Force
-Copy-Item (Join-Path $ExtractedDir "test_wavs\bria.wav") $VoiceDir -Force
+Invoke-WebRequest -Uri $DefaultVoiceUrl -OutFile (Join-Path $VoiceDir "selfie.wav")
 
 Write-Host "PocketTTS assets downloaded into $ModelDir and $VoiceDir"

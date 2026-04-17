@@ -10,6 +10,7 @@ TMP_DIR="$PLUGIN_DIR/.tmp/pocket-tts"
 ARCHIVE_NAME="sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2"
 ARCHIVE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$ARCHIVE_NAME"
 EXTRACTED_DIR="$TMP_DIR/sherpa-onnx-pocket-tts-int8-2026-01-26"
+DEFAULT_VOICE_URL="https://huggingface.co/kyutai/tts-voices/resolve/main/voice-donations/Selfie.wav"
 
 mkdir -p "$MODEL_DIR" "$VOICE_DIR" "$TMP_DIR"
 rm -rf "$TMP_DIR"/*
@@ -27,6 +28,6 @@ cp "$EXTRACTED_DIR/decoder.int8.onnx" "$MODEL_DIR/"
 cp "$EXTRACTED_DIR/text_conditioner.onnx" "$MODEL_DIR/"
 cp "$EXTRACTED_DIR/vocab.json" "$MODEL_DIR/"
 cp "$EXTRACTED_DIR/token_scores.json" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/test_wavs/bria.wav" "$VOICE_DIR/"
+curl -L --fail --output "$VOICE_DIR/selfie.wav" "$DEFAULT_VOICE_URL"
 
 echo "PocketTTS assets downloaded into $MODEL_DIR and $VOICE_DIR"

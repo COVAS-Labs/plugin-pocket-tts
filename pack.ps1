@@ -32,7 +32,7 @@ if (Test-Path "requirements.txt") {
 }
 
 # Ensure PocketTTS model files and bundled reference audio are present
-if ((-not (Test-Path "model\lm_flow.int8.onnx")) -or (-not (Test-Path "assets\voices\bria.wav"))) {
+if ((-not (Test-Path "model\lm_flow.int8.onnx")) -or (-not (Test-Path "assets\voices\selfie.wav"))) {
     if (Test-Path "scripts\download_pocket_tts_assets.ps1") {
         Write-Host "PocketTTS assets not found; downloading into .\model and .\assets\voices ..."
         .\scripts\download_pocket_tts_assets.ps1
@@ -43,7 +43,7 @@ if ((-not (Test-Path "model\lm_flow.int8.onnx")) -or (-not (Test-Path "assets\vo
 }
 
 # Remember to add any additional files, and change the name of the plugin
-$artifacts = "cn-plugin-pocket-tts.py", "requirements.txt", "manifest.json", "__init__.py"
+$artifacts = "cn-plugin-pocket-tts.py", "requirements.txt", "manifest.json", "__init__.py", "THIRD_PARTY_NOTICES.md"
 
 if (Test-Path "deps") {
     $artifacts += "deps"

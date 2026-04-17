@@ -135,10 +135,18 @@ class PocketTTSModel(TTSModel):
         if os.path.isfile(candidate):
             return candidate
 
+        # Older plugin versions defaulted to bria.wav. If a persisted config still
+        # points there, transparently fall back to the new CC0 bundled voice.
+        if os.path.basename(candidate).lower() == "bria.wav":
+            selfie_candidate = os.path.join(os.path.dirname(candidate), "selfie.wav")
+            if os.path.isfile(selfie_candidate):
+                return selfie_candidate
+
         if os.path.isdir(candidate):
-            preferred = os.path.join(candidate, "bria.wav")
-            if os.path.isfile(preferred):
-                return preferred
+            for preferred_name in ("selfie.wav", "bria.wav"):
+                preferred = os.path.join(candidate, preferred_name)
+                if os.path.isfile(preferred):
+                    return preferred
 
             supported_exts = {".wav", ".flac", ".ogg", ".mp3"}
             audio_files = []
@@ -266,7 +274,7 @@ class PocketTTSPlugin(PluginBase):
         self.plugin_dir = os.path.dirname(os.path.abspath(__file__))
         self.model_dir = os.path.join(self.plugin_dir, "model")
         self.default_reference_audio_dir = os.path.join(self.plugin_dir, "assets", "voices")
-        self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "bria.wav")
+        self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "selfie.wav")
 
         self.settings_config = PluginSettings(
             key="Pocket TTS",
@@ -309,7 +317,7 @@ class PocketTTSPlugin(PluginBase):
                                 content=(
                                     "Pocket TTS clones a voice from a reference clip. "
                                     "You can point this setting at a file or a directory. "
-                                    "If you point it at the bundled assets directory, the plugin prefers `bria.wav`."
+                                    "If you point it at the bundled assets directory, the plugin prefers `selfie.wav`."
                                 ),
                             ),
                             TextSetting(

@@ -11,7 +11,7 @@ This plugin provides offline Text-to-Speech (TTS) for COVAS:NEXT using **PocketT
 - **Offline synthesis**: No internet connection required.
 - **Streaming output**: Uses sherpa-onnx's streaming callback path so audio starts arriving before the whole utterance finishes.
 - **Voice cloning**: Uses a short reference clip instead of fixed speaker IDs.
-- **Bundled default voice**: The plugin ships with a bundled reference clip and points to the bundled `assets/voices` directory by default.
+- **Bundled default voice**: The plugin ships with a bundled reference clip and points to `assets/voices/selfie.wav` by default.
 
 ## Installation
 
@@ -34,7 +34,7 @@ Unpack the plugin into the `plugins` folder in the COVAS:NEXT AppData folder, le
 Select **Pocket TTS (Offline)** as your TTS provider in COVAS:NEXT.
 
 The plugin exposes:
-- **Reference audio path**: Accepts either a direct audio file path or a directory. If you point it at the bundled `assets/voices` directory, the plugin prefers `bria.wav`.
+- **Reference audio path**: Accepts either a direct audio file path or a directory. If you point it at the bundled `assets/voices` directory, the plugin prefers `selfie.wav`.
 - **Generation steps**: Higher values improve quality but add latency.
 
 ## Development
@@ -60,7 +60,13 @@ If the PocketTTS model assets are not present, the pack scripts automatically do
 - `model/text_conditioner.onnx`
 - `model/vocab.json`
 - `model/token_scores.json`
-- `assets/voices/bria.wav`
+- `assets/voices/selfie.wav`
+
+## Licensing
+
+- The bundled PocketTTS model weights are derived from Kyutai PocketTTS and require attribution under `CC-BY-4.0`.
+- The bundled default reference voice `selfie.wav` comes from `kyutai/tts-voices/voice-donations` and is released as `CC0`.
+- Third-party attribution details are included in `THIRD_PARTY_NOTICES.md` and are packaged into the release zip.
 
 You can also download the assets explicitly:
 - Linux/macOS: `./scripts/download_pocket_tts_assets.sh`
