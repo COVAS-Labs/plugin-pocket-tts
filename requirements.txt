@@ -1,0 +1,4 @@
+sherpa-onnx
+numpy
+samplerate
+soundfile

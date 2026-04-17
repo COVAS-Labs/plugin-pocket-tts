@@ -1,0 +1,88 @@
+# COVAS:NEXT Plugin Pocket TTS
+
+Run zero-shot TTS locally using PocketTTS via `sherpa-onnx`.
+
+## About
+
+This plugin provides offline Text-to-Speech (TTS) for COVAS:NEXT using **PocketTTS** through **sherpa-onnx**. PocketTTS clones a voice from a short reference clip, so you can keep synthesis local while swapping voices just by changing the reference audio.
+
+## Features
+
+- **Offline synthesis**: No internet connection required.
+- **Streaming output**: Uses sherpa-onnx's streaming callback path so audio starts arriving before the whole utterance finishes.
+- **Voice cloning**: Uses a short reference clip instead of fixed speaker IDs.
+- **Bundled default voice**: The plugin ships with a bundled reference clip and points to the bundled `assets/voices` directory by default.
+
+## Installation
+
+Download the latest release under the *Releases* section on the right. Follow the instructions on [COVAS:NEXT Plugins](https://ratherrude.github.io/Elite-Dangerous-AI-Integration/plugins/) to install the plugin.
+
+Unpack the plugin into the `plugins` folder in the COVAS:NEXT AppData folder, leading to the following folder structure:
+* `plugins`
+    * `cn-plugin-pocket-tts`
+        * `cn-plugin-pocket-tts.py`
+        * `requirements.txt`
+        * `deps`
+        * `model`
+        * `assets`
+        * `__init__.py`
+        * etc.
+    * `OtherPlugin`
+
+## Configuration
+
+Select **Pocket TTS (Offline)** as your TTS provider in COVAS:NEXT.
+
+The plugin exposes:
+- **Reference audio path**: Accepts either a direct audio file path or a directory. If you point it at the bundled `assets/voices` directory, the plugin prefers `bria.wav`.
+- **Generation steps**: Higher values improve quality but add latency.
+
+## Development
+
+During development, clone the COVAS:NEXT repository and place your plugin project in the plugins folder.
+Install the dependencies to your local `.venv` virtual environment using `pip`, by running this command in the `cn-plugin-pocket-tts` folder:
+
+```bash
+pip install -r requirements.txt
+```
+
+Follow the [COVAS:NEXT Plugin Development Guide](https://ratherrude.github.io/Elite-Dangerous-AI-Integration/plugins/Development/) for more information on developing plugins.
+
+## Packaging
+
+Use the `./pack.ps1` or `./pack.sh` scripts to package the plugin and any Python dependencies in the `deps` folder.
+
+If the PocketTTS model assets are not present, the pack scripts automatically download the sherpa-onnx release assets into this layout:
+- `model/lm_flow.int8.onnx`
+- `model/lm_main.int8.onnx`
+- `model/encoder.onnx`
+- `model/decoder.int8.onnx`
+- `model/text_conditioner.onnx`
+- `model/vocab.json`
+- `model/token_scores.json`
+- `assets/voices/bria.wav`
+
+You can also download the assets explicitly:
+- Linux/macOS: `./scripts/download_pocket_tts_assets.sh`
+- Windows: `./scripts/download_pocket_tts_assets.ps1`
+
+## Releasing
+
+This project includes a GitHub Actions workflow that automatically creates releases. To create a new release:
+
+1. Tag your commit with a version number:
+   ```bash
+   git tag v1.0.0
+   ```
+2. Push the tag to GitHub:
+   ```bash
+   git push origin v1.0.0
+   ```
+
+The workflow automatically downloads the PocketTTS assets, builds the plugin, and creates a GitHub Release with the zip file attached.
+
+## Acknowledgements
+
+- [COVAS:NEXT](https://github.com/RatherRude/Elite-Dangerous-AI-Integration)
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Runtime and PocketTTS integration.
+- [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) - The underlying TTS model.
