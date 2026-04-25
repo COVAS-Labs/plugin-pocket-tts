@@ -32,7 +32,9 @@ jobs:
           ./pack.sh
 
       - name: Rename artifact
-        run: mv dist/cn-plugin-pocket-tts.zip dist/cn-plugin-pocket-tts-${{ github.ref_name }}-linux.zip
+        run: |
+          sanitized_tag="${GITHUB_REF_NAME//./-}"
+          mv dist/cn-plugin-pocket-tts.zip dist/cn-plugin-pocket-tts-${sanitized_tag}-linux.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -61,7 +63,9 @@ jobs:
         shell: pwsh
 
       - name: Rename artifact
-        run: Rename-Item -Path "dist\cn-plugin-pocket-tts.zip" -NewName "cn-plugin-pocket-tts-${{ github.ref_name }}-windows.zip"
+        run: |
+          $sanitizedTag = $env:GITHUB_REF_NAME -replace '\.', '-'
+          Rename-Item -Path "dist\cn-plugin-pocket-tts.zip" -NewName "cn-plugin-pocket-tts-$sanitizedTag-windows.zip"
         shell: pwsh
 
       - name: Upload artifact
