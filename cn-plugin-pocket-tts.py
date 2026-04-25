@@ -4,14 +4,55 @@ Provides offline zero-shot Text-to-Speech via sherpa-onnx.
 """
 
 from typing import override, Iterable, Any, Optional
+import importlib
 import os
 import queue
+import sys
 import threading
+
+PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
+DEPS_DIR = os.path.join(PLUGIN_DIR, "deps")
+DLL_DIRECTORY_HANDLES: list[Any] = []
+
+if os.path.isdir(DEPS_DIR) and DEPS_DIR not in sys.path:
+    sys.path.insert(0, DEPS_DIR)
+
+# Ensure the packaged sherpa shared libraries are discoverable before import.
+if hasattr(os, "add_dll_directory"):
+    for dll_dir in (DEPS_DIR, os.path.join(DEPS_DIR, "sherpa_onnx", "lib")):
+        if os.path.isdir(dll_dir):
+            DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(dll_dir))
+
+
+def _load_bundled_sherpa_onnx():
+    bundled_prefix = os.path.realpath(DEPS_DIR) + os.sep
+    existing = sys.modules.get("sherpa_onnx")
+
+    if existing is not None:
+        existing_path = os.path.realpath(getattr(existing, "__file__", ""))
+        if not existing_path.startswith(bundled_prefix):
+            for module_name in list(sys.modules):
+                if module_name == "sherpa_onnx" or module_name.startswith("sherpa_onnx."):
+                    del sys.modules[module_name]
+
+    if DEPS_DIR not in sys.path:
+        sys.path.insert(0, DEPS_DIR)
+
+    sherpa_module = importlib.import_module("sherpa_onnx")
+    sherpa_path = os.path.realpath(getattr(sherpa_module, "__file__", ""))
+    if not sherpa_path.startswith(bundled_prefix):
+        raise ImportError(
+            "Failed to load bundled sherpa_onnx from the plugin deps directory. "
+            f"Resolved module path: {sherpa_path or 'unknown'}"
+        )
+
+    return sherpa_module
 
 import numpy as np
 import samplerate
-import sherpa_onnx
 import soundfile as sf
+
+sherpa_onnx = _load_bundled_sherpa_onnx()
 
 from lib.PluginHelper import TTSModel
 from lib.PluginSettingDefinitions import (
@@ -69,7 +110,14 @@ class PocketTTSModel(TTSModel):
             if self._tts is not None:
                 return self._tts
 
-            log("info", f"Loading PocketTTS models from {self.model_dir}")
+            sherpa_version = getattr(sherpa_onnx, "__version__", getattr(sherpa_onnx, "version", "unknown"))
+            log("info", f"Loading PocketTTS models from {self.model_dir} using sherpa_onnx {sherpa_version} ({getattr(sherpa_onnx, '__file__', 'unknown module path')})")
+
+            if not hasattr(sherpa_onnx, "OfflineTtsPocketModelConfig"):
+                raise RuntimeError(
+                    "The loaded sherpa_onnx package does not include PocketTTS support. "
+                    f"Resolved module: {getattr(sherpa_onnx, '__file__', 'unknown')}"
+                )
 
             config = sherpa_onnx.OfflineTtsConfig(
                 model=sherpa_onnx.OfflineTtsModelConfig(
@@ -271,7 +319,7 @@ class PocketTTSPlugin(PluginBase):
     def __init__(self, plugin_manifest: PluginManifest):
         super().__init__(plugin_manifest)
 
-        self.plugin_dir = os.path.dirname(os.path.abspath(__file__))
+        self.plugin_dir = PLUGIN_DIR
         self.model_dir = os.path.join(self.plugin_dir, "model")
         self.default_reference_audio_dir = os.path.join(self.plugin_dir, "assets", "voices")
         self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "selfie.wav")
@@ -363,7 +411,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.2",
+        version="0.0.3",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

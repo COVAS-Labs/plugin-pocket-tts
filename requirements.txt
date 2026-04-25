@@ -1,4 +1,4 @@
-sherpa-onnx
+sherpa-onnx==1.12.39
 numpy
 samplerate
 soundfile
