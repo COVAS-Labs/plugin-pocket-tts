@@ -49,7 +49,8 @@ New-Item -ItemType Directory -Force -Path $ModelBundleDir | Out-Null
     "text_conditioner.onnx"
 ) | ForEach-Object {
     $TargetPath = Join-Path $ModelBundleDir $_
-    Invoke-WebRequest -Uri "$ModelBaseUrl/$_?download=true" -OutFile $TargetPath
+    $ModelUrl = "{0}/{1}?download=true" -f $ModelBaseUrl, $_
+    Invoke-WebRequest -Uri $ModelUrl -OutFile $TargetPath
 }
 
 Invoke-WebRequest -Uri $DefaultVoiceUrl -OutFile (Join-Path $VoiceDir "selfie.wav")
