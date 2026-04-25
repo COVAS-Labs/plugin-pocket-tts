@@ -2,14 +2,19 @@
 
 This plugin redistributes third-party software and model assets.
 
-## sherpa-onnx
+## PocketTTS ONNX runtime helper
 
-- Project: `k2-fsa/sherpa-onnx`
-- Role: Runtime used by the plugin for PocketTTS inference
+- Project: `KevinAHM/pocket-tts-onnx`
+- Role: Vendored ONNX Runtime-based helper used by the plugin for PocketTTS inference
 - License: Apache-2.0
-- Source: https://github.com/k2-fsa/sherpa-onnx
+- Source: https://huggingface.co/KevinAHM/pocket-tts-onnx
 
-The packaged `sherpa-onnx` wheel also includes its own license files under `deps/sherpa_onnx-*.dist-info/licenses/`.
+## ONNX Runtime
+
+- Project: `microsoft/onnxruntime`
+- Role: ONNX execution backend redistributed in the packaged Python dependencies
+- License: MIT
+- Source: https://github.com/microsoft/onnxruntime
 
 ## PocketTTS model assets
 
@@ -22,7 +27,7 @@ The packaged `sherpa-onnx` wheel also includes its own license files under `deps
 Attribution:
 
 - Authors: Manu Orsini, Simon Rouard, Gabriel De Marmiesse, Vaclav Volhejn, Neil Zeghidour, Alexandre Defossez
-- The packaged ONNX files are redistributed unchanged from the sherpa-onnx PocketTTS release archive and are based on the Kyutai PocketTTS model.
+- The packaged ONNX files are redistributed from the PocketTTS ONNX export maintained at `KevinAHM/pocket-tts-onnx` and are based on the Kyutai PocketTTS model.
 
 CC-BY-4.0 requires attribution and a link to the license:
 

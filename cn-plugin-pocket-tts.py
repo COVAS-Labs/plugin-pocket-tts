@@ -1,58 +1,22 @@
-"""
-Pocket TTS Plugin for COVAS:NEXT.
-Provides offline zero-shot Text-to-Speech via sherpa-onnx.
-"""
+"""Pocket TTS plugin for COVAS:NEXT using a vendored ONNX runtime."""
 
 from typing import override, Iterable, Any, Optional
-import importlib
 import os
-import queue
 import sys
 import threading
 
 PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
 DEPS_DIR = os.path.join(PLUGIN_DIR, "deps")
-DLL_DIRECTORY_HANDLES: list[Any] = []
 
 if os.path.isdir(DEPS_DIR) and DEPS_DIR not in sys.path:
     sys.path.insert(0, DEPS_DIR)
 
-# Ensure the packaged sherpa shared libraries are discoverable before import.
-if hasattr(os, "add_dll_directory"):
-    for dll_dir in (DEPS_DIR, os.path.join(DEPS_DIR, "sherpa_onnx", "lib")):
-        if os.path.isdir(dll_dir):
-            DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(dll_dir))
-
-
-def _load_bundled_sherpa_onnx():
-    bundled_prefix = os.path.realpath(DEPS_DIR) + os.sep
-    existing = sys.modules.get("sherpa_onnx")
-
-    if existing is not None:
-        existing_path = os.path.realpath(getattr(existing, "__file__", ""))
-        if not existing_path.startswith(bundled_prefix):
-            for module_name in list(sys.modules):
-                if module_name == "sherpa_onnx" or module_name.startswith("sherpa_onnx."):
-                    del sys.modules[module_name]
-
-    if DEPS_DIR not in sys.path:
-        sys.path.insert(0, DEPS_DIR)
-
-    sherpa_module = importlib.import_module("sherpa_onnx")
-    sherpa_path = os.path.realpath(getattr(sherpa_module, "__file__", ""))
-    if not sherpa_path.startswith(bundled_prefix):
-        raise ImportError(
-            "Failed to load bundled sherpa_onnx from the plugin deps directory. "
-            f"Resolved module path: {sherpa_path or 'unknown'}"
-        )
-
-    return sherpa_module
-
 import numpy as np
-import samplerate
-import soundfile as sf
 
-sherpa_onnx = _load_bundled_sherpa_onnx()
+try:
+    from .vendor.pocket_tts_onnx import PocketTTSOnnx
+except ImportError:
+    from vendor.pocket_tts_onnx import PocketTTSOnnx
 
 from lib.PluginHelper import TTSModel
 from lib.PluginSettingDefinitions import (
@@ -70,6 +34,8 @@ from lib.Logger import log
 class PocketTTSModel(TTSModel):
     """PocketTTS text-to-speech model implementation."""
 
+    DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
+    DEFAULT_TEMPERATURE = 0.7
     TARGET_SAMPLE_RATE = 24000
     STREAM_CHUNK_SAMPLES = 2400
 
@@ -86,23 +52,11 @@ class PocketTTSModel(TTSModel):
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
 
-        self._tts: Optional[sherpa_onnx.OfflineTts] = None
+        self._tts: Optional[PocketTTSOnnx] = None
         self._load_lock = threading.Lock()
         self._synthesis_lock = threading.Lock()
-        self._cached_reference_audio_path: Optional[str] = None
-        self._cached_reference_audio: Optional[np.ndarray] = None
 
-    def _resolve_required_file(self, *relative_candidates: str) -> str:
-        for candidate in relative_candidates:
-            path = os.path.join(self.model_dir, candidate)
-            if os.path.exists(path):
-                return path
-
-        raise FileNotFoundError(
-            f"Missing PocketTTS model asset. Tried: {', '.join(os.path.join(self.model_dir, c) for c in relative_candidates)}"
-        )
-
-    def _load_model(self) -> sherpa_onnx.OfflineTts:
+    def _load_model(self) -> PocketTTSOnnx:
         if self._tts is not None:
             return self._tts
 
@@ -110,55 +64,25 @@ class PocketTTSModel(TTSModel):
             if self._tts is not None:
                 return self._tts
 
-            sherpa_version = getattr(sherpa_onnx, "__version__", getattr(sherpa_onnx, "version", "unknown"))
-            log("info", f"Loading PocketTTS models from {self.model_dir} using sherpa_onnx {sherpa_version} ({getattr(sherpa_onnx, '__file__', 'unknown module path')})")
-
-            if not hasattr(sherpa_onnx, "OfflineTtsPocketModelConfig"):
-                raise RuntimeError(
-                    "The loaded sherpa_onnx package does not include PocketTTS support. "
-                    f"Resolved module: {getattr(sherpa_onnx, '__file__', 'unknown')}"
+            bundle_dir = os.path.join(self.model_dir, self.DEFAULT_LANGUAGE_BUNDLE)
+            bundle_manifest = os.path.join(bundle_dir, "bundle.json")
+            if not os.path.isfile(bundle_manifest):
+                raise FileNotFoundError(
+                    "Missing PocketTTS ONNX bundle manifest. "
+                    f"Expected {bundle_manifest}."
                 )
 
-            config = sherpa_onnx.OfflineTtsConfig(
-                model=sherpa_onnx.OfflineTtsModelConfig(
-                    pocket=sherpa_onnx.OfflineTtsPocketModelConfig(
-                        lm_flow=self._resolve_required_file(
-                            "lm_flow.int8.onnx",
-                            "lm_flow.onnx",
-                            "flow_lm_flow_int8.onnx",
-                            "flow_lm_flow.onnx",
-                        ),
-                        lm_main=self._resolve_required_file(
-                            "lm_main.int8.onnx",
-                            "lm_main.onnx",
-                            "flow_lm_main_int8.onnx",
-                            "flow_lm_main.onnx",
-                        ),
-                        encoder=self._resolve_required_file(
-                            "encoder.onnx",
-                            "mimi_encoder.onnx",
-                        ),
-                        decoder=self._resolve_required_file(
-                            "decoder.int8.onnx",
-                            "decoder.onnx",
-                            "mimi_decoder_int8.onnx",
-                            "mimi_decoder.onnx",
-                        ),
-                        text_conditioner=self._resolve_required_file("text_conditioner.onnx"),
-                        vocab_json=self._resolve_required_file("vocab.json"),
-                        token_scores_json=self._resolve_required_file("token_scores.json"),
-                    ),
-                    debug=False,
-                    num_threads=max(1, (os.cpu_count() or 2) // 2),
-                    provider="cpu",
-                ),
-                max_num_sentences=1,
+            log(
+                "info",
+                f"Loading PocketTTS ONNX bundle from {bundle_dir} with {self.num_steps} generation steps",
             )
-
-            if not config.validate():
-                raise ValueError("PocketTTS configuration is invalid. Check model assets in the plugin's model directory.")
-
-            self._tts = sherpa_onnx.OfflineTts(config)
+            self._tts = PocketTTSOnnx(
+                models_dir=self.model_dir,
+                language=self.DEFAULT_LANGUAGE_BUNDLE,
+                precision="int8",
+                temperature=self.DEFAULT_TEMPERATURE,
+                lsd_steps=self.num_steps,
+            )
             log("info", f"PocketTTS sample rate: {self._tts.sample_rate} Hz")
             return self._tts
 
@@ -227,30 +151,11 @@ class PocketTTSModel(TTSModel):
             f"Checked requested voice '{requested_voice}', configured path '{configured_path}', and '{default_voice_dir}'."
         )
 
-    def _load_reference_audio(self, reference_audio_path: str) -> np.ndarray:
-        tts = self._load_model()
-        if self._cached_reference_audio_path == reference_audio_path and self._cached_reference_audio is not None:
-            return self._cached_reference_audio
-
-        log("info", f"Loading PocketTTS reference audio from {reference_audio_path}")
-        samples, sample_rate = sf.read(reference_audio_path, dtype="float32")
-        samples = np.asarray(samples, dtype=np.float32)
-
-        if samples.ndim == 2:
-            samples = samples.mean(axis=1)
-        samples = samples.reshape(-1)
-
-        if sample_rate != tts.sample_rate:
-            samples = samplerate.resample(samples, tts.sample_rate / sample_rate, "sinc_best")
-
-        samples = np.ascontiguousarray(samples, dtype=np.float32)
-        self._cached_reference_audio_path = reference_audio_path
-        self._cached_reference_audio = samples
-        return samples
-
     def _pcm16_chunks(self, samples: np.ndarray, source_sample_rate: int) -> Iterable[bytes]:
         if source_sample_rate != self.TARGET_SAMPLE_RATE:
-            samples = samplerate.resample(samples, self.TARGET_SAMPLE_RATE / source_sample_rate, "sinc_best")
+            raise RuntimeError(
+                f"PocketTTS ONNX returned {source_sample_rate} Hz audio, expected {self.TARGET_SAMPLE_RATE} Hz"
+            )
 
         pcm = (np.asarray(samples, dtype=np.float32) * 32767.0).clip(-32768, 32767).astype(np.int16)
         for start in range(0, len(pcm), self.STREAM_CHUNK_SAMPLES):
@@ -263,54 +168,20 @@ class PocketTTSModel(TTSModel):
 
         tts = self._load_model()
         reference_audio_path = self._resolve_reference_audio_path(self.reference_audio_path, voice)
-        reference_audio = self._load_reference_audio(reference_audio_path)
-
-        generation_config = sherpa_onnx.GenerationConfig()
-        generation_config.reference_audio = reference_audio
-        generation_config.reference_sample_rate = tts.sample_rate
-        generation_config.num_steps = self.num_steps
 
         with self._synthesis_lock:
-            audio_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue()
-            errors: list[Exception] = []
-            streamed_samples = 0
+            yielded_audio = False
+            log("info", f"Streaming PocketTTS audio for {len(text)} characters without pre-chunking")
+            for audio_chunk in tts.stream(text, voice=reference_audio_path):
+                chunk = np.asarray(audio_chunk, dtype=np.float32).reshape(-1)
+                if chunk.size == 0:
+                    continue
+                yielded_audio = True
+                for pcm_chunk in self._pcm16_chunks(chunk, tts.sample_rate):
+                    yield pcm_chunk
 
-            def generated_audio_callback(samples: np.ndarray, progress: float) -> int:
-                del progress
-                nonlocal streamed_samples
-                chunk = np.asarray(samples, dtype=np.float32).reshape(-1)
-                streamed_samples += len(chunk)
-                audio_queue.put(chunk)
-                return 1
-
-            def run_generation() -> None:
-                try:
-                    audio = tts.generate(text, generation_config, callback=generated_audio_callback)
-                    final_samples = np.asarray(audio.samples, dtype=np.float32).reshape(-1)
-                    if final_samples.size == 0:
-                        raise RuntimeError("PocketTTS returned no audio")
-                    if streamed_samples < final_samples.size:
-                        audio_queue.put(final_samples[streamed_samples:])
-                except Exception as exc:
-                    errors.append(exc)
-                finally:
-                    audio_queue.put(None)
-
-            thread = threading.Thread(target=run_generation, name="pocket-tts-stream", daemon=True)
-            thread.start()
-
-            try:
-                while True:
-                    chunk = audio_queue.get()
-                    if chunk is None:
-                        break
-                    for pcm_chunk in self._pcm16_chunks(chunk, tts.sample_rate):
-                        yield pcm_chunk
-            finally:
-                thread.join()
-
-            if errors:
-                raise errors[0]
+            if not yielded_audio:
+                raise RuntimeError("PocketTTS returned no audio")
 
 
 class PocketTTSPlugin(PluginBase):
@@ -411,7 +282,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.3",
+        version="0.0.4",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

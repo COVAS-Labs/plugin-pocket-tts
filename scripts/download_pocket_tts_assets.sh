@@ -5,29 +5,44 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODEL_DIR="$PLUGIN_DIR/model"
+MODEL_BUNDLE="english_2026-04"
+MODEL_BUNDLE_DIR="$MODEL_DIR/$MODEL_BUNDLE"
 VOICE_DIR="$PLUGIN_DIR/assets/voices"
 TMP_DIR="$PLUGIN_DIR/.tmp/pocket-tts"
-ARCHIVE_NAME="sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2"
-ARCHIVE_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$ARCHIVE_NAME"
-EXTRACTED_DIR="$TMP_DIR/sherpa-onnx-pocket-tts-int8-2026-01-26"
+MODEL_BASE_URL="https://huggingface.co/KevinAHM/pocket-tts-onnx/resolve/main/onnx/$MODEL_BUNDLE"
 DEFAULT_VOICE_URL="https://huggingface.co/kyutai/tts-voices/resolve/main/voice-donations/Selfie.wav"
 
-mkdir -p "$MODEL_DIR" "$VOICE_DIR" "$TMP_DIR"
+mkdir -p "$MODEL_DIR" "$MODEL_BUNDLE_DIR" "$VOICE_DIR" "$TMP_DIR"
 rm -rf "$TMP_DIR"/*
 
-echo "Downloading PocketTTS assets..."
-curl -L --fail --output "$TMP_DIR/$ARCHIVE_NAME" "$ARCHIVE_URL"
+echo "Downloading PocketTTS ONNX bundle assets..."
 
-echo "Extracting PocketTTS assets..."
-tar -xjf "$TMP_DIR/$ARCHIVE_NAME" -C "$TMP_DIR"
+rm -f \
+    "$MODEL_DIR/lm_flow.int8.onnx" \
+    "$MODEL_DIR/lm_main.int8.onnx" \
+    "$MODEL_DIR/encoder.onnx" \
+    "$MODEL_DIR/decoder.int8.onnx" \
+    "$MODEL_DIR/text_conditioner.onnx" \
+    "$MODEL_DIR/vocab.json" \
+    "$MODEL_DIR/token_scores.json"
+rm -rf "$MODEL_BUNDLE_DIR"
+mkdir -p "$MODEL_BUNDLE_DIR"
 
-cp "$EXTRACTED_DIR/lm_flow.int8.onnx" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/lm_main.int8.onnx" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/encoder.onnx" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/decoder.int8.onnx" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/text_conditioner.onnx" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/vocab.json" "$MODEL_DIR/"
-cp "$EXTRACTED_DIR/token_scores.json" "$MODEL_DIR/"
+bundle_files=(
+    "bundle.json"
+    "tokenizer.model"
+    "bos_before_voice.npy"
+    "flow_lm_main_int8.onnx"
+    "flow_lm_flow_int8.onnx"
+    "mimi_decoder_int8.onnx"
+    "mimi_encoder.onnx"
+    "text_conditioner.onnx"
+)
+
+for file_name in "${bundle_files[@]}"; do
+    curl -L --fail --output "$MODEL_BUNDLE_DIR/$file_name" "$MODEL_BASE_URL/$file_name?download=true"
+done
+
 curl -L --fail --output "$VOICE_DIR/selfie.wav" "$DEFAULT_VOICE_URL"
 
-echo "PocketTTS assets downloaded into $MODEL_DIR and $VOICE_DIR"
+echo "PocketTTS ONNX assets downloaded into $MODEL_BUNDLE_DIR and $VOICE_DIR"

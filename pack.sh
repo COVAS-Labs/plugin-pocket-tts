@@ -39,10 +39,10 @@ if [ -f "requirements.txt" ]; then
     "$PYTHON_BIN" -m pip install --target ./deps -r requirements.txt
 fi
 
-# Ensure PocketTTS model files and bundled reference audio are present
-if [ ! -f "model/lm_flow.int8.onnx" ] || [ ! -f "assets/voices/selfie.wav" ]; then
+# Ensure PocketTTS ONNX bundle files and bundled reference audio are present
+if [ ! -f "model/english_2026-04/bundle.json" ] || [ ! -f "assets/voices/selfie.wav" ]; then
     if [ -f "scripts/download_pocket_tts_assets.sh" ]; then
-        echo "PocketTTS assets not found; downloading into ./model and ./assets/voices ..."
+        echo "PocketTTS ONNX assets not found; downloading into ./model and ./assets/voices ..."
         chmod +x scripts/download_pocket_tts_assets.sh
         ./scripts/download_pocket_tts_assets.sh
     else
@@ -68,6 +68,10 @@ fi
 
 if [ -d "assets" ]; then
     artifacts+=("assets")
+fi
+
+if [ -d "vendor" ]; then
+    artifacts+=("vendor")
 fi
 
 # Create the zip archive

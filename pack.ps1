@@ -31,10 +31,10 @@ if (Test-Path "requirements.txt") {
     & $PythonCommand @PythonArgs -m pip install --target ./deps -r requirements.txt
 }
 
-# Ensure PocketTTS model files and bundled reference audio are present
-if ((-not (Test-Path "model\lm_flow.int8.onnx")) -or (-not (Test-Path "assets\voices\selfie.wav"))) {
+# Ensure PocketTTS ONNX bundle files and bundled reference audio are present
+if ((-not (Test-Path "model\english_2026-04\bundle.json")) -or (-not (Test-Path "assets\voices\selfie.wav"))) {
     if (Test-Path "scripts\download_pocket_tts_assets.ps1") {
-        Write-Host "PocketTTS assets not found; downloading into .\model and .\assets\voices ..."
+        Write-Host "PocketTTS ONNX assets not found; downloading into .\model and .\assets\voices ..."
         .\scripts\download_pocket_tts_assets.ps1
     }
     else {
@@ -55,6 +55,10 @@ if (Test-Path "model") {
 
 if (Test-Path "assets") {
     $artifacts += "assets"
+}
+
+if (Test-Path "vendor") {
+    $artifacts += "vendor"
 }
 
 $compress = @{

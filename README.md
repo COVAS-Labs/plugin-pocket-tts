@@ -1,15 +1,15 @@
 # COVAS:NEXT Plugin Pocket TTS
 
-Run zero-shot TTS locally using PocketTTS via `sherpa-onnx`.
+Run zero-shot TTS locally using PocketTTS via a bundled `onnxruntime` backend.
 
 ## About
 
-This plugin provides offline Text-to-Speech (TTS) for COVAS:NEXT using **PocketTTS** through **sherpa-onnx**. PocketTTS clones a voice from a short reference clip, so you can keep synthesis local while swapping voices just by changing the reference audio.
+This plugin provides offline Text-to-Speech (TTS) for COVAS:NEXT using **PocketTTS** through a bundled **ONNX Runtime** backend. PocketTTS clones a voice from a short reference clip, so you can keep synthesis local while swapping voices just by changing the reference audio.
 
 ## Features
 
 - **Offline synthesis**: No internet connection required.
-- **Streaming output**: Uses sherpa-onnx's streaming callback path so audio starts arriving before the whole utterance finishes.
+- **Streaming output**: Streams audio directly from the bundled PocketTTS ONNX runtime.
 - **Voice cloning**: Uses a short reference clip instead of fixed speaker IDs.
 - **Bundled default voice**: The plugin ships with a bundled reference clip and points to `assets/voices/selfie.wav` by default.
 
@@ -52,14 +52,15 @@ Follow the [COVAS:NEXT Plugin Development Guide](https://ratherrude.github.io/El
 
 Use the `./pack.ps1` or `./pack.sh` scripts to package the plugin and any Python dependencies in the `deps` folder.
 
-If the PocketTTS model assets are not present, the pack scripts automatically download the sherpa-onnx release assets into this layout:
-- `model/lm_flow.int8.onnx`
-- `model/lm_main.int8.onnx`
-- `model/encoder.onnx`
-- `model/decoder.int8.onnx`
-- `model/text_conditioner.onnx`
-- `model/vocab.json`
-- `model/token_scores.json`
+If the PocketTTS model assets are not present, the pack scripts automatically download the PocketTTS ONNX bundle into this layout:
+- `model/english_2026-04/bundle.json`
+- `model/english_2026-04/tokenizer.model`
+- `model/english_2026-04/bos_before_voice.npy`
+- `model/english_2026-04/flow_lm_main_int8.onnx`
+- `model/english_2026-04/flow_lm_flow_int8.onnx`
+- `model/english_2026-04/mimi_decoder_int8.onnx`
+- `model/english_2026-04/mimi_encoder.onnx`
+- `model/english_2026-04/text_conditioner.onnx`
 - `assets/voices/selfie.wav`
 
 ## Licensing
@@ -90,5 +91,5 @@ The workflow automatically downloads the PocketTTS assets, builds the plugin, an
 ## Acknowledgements
 
 - [COVAS:NEXT](https://github.com/RatherRude/Elite-Dangerous-AI-Integration)
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - Runtime and PocketTTS integration.
+- [onnxruntime](https://github.com/microsoft/onnxruntime) - Local inference runtime.
 - [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) - The underlying TTS model.
