@@ -22,11 +22,11 @@ except ImportError:
     HAS_SOUNDFILE = False
 
 try:
-    import scipy.signal
+    import samplerate
 
-    HAS_SCIPY = True
+    HAS_SAMPLERATE = True
 except ImportError:
-    HAS_SCIPY = False
+    HAS_SAMPLERATE = False
 
 
 class PocketTTSOnnx:
@@ -242,12 +242,10 @@ class PocketTTSOnnx:
             raise ImportError("soundfile is required for non-WAV voice cloning inputs")
 
         if sample_rate != self.sample_rate:
-            if not HAS_SCIPY:
-                raise ImportError("scipy is required when voice inputs need resampling")
-            gcd = np.gcd(int(sample_rate), int(self.sample_rate))
-            up = int(self.sample_rate // gcd)
-            down = int(sample_rate // gcd)
-            audio = scipy.signal.resample_poly(audio, up, down, axis=-1).astype(np.float32)
+            if not HAS_SAMPLERATE:
+                raise ImportError("samplerate is required when voice inputs need resampling")
+            ratio = float(self.sample_rate) / float(sample_rate)
+            audio = samplerate.resample(audio, ratio, "sinc_best").astype(np.float32)
 
         return audio.reshape(1, 1, -1)
 

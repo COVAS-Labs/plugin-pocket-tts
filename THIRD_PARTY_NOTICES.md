@@ -16,6 +16,13 @@ This plugin redistributes third-party software and model assets.
 - License: MIT
 - Source: https://github.com/microsoft/onnxruntime
 
+## samplerate
+
+- Project: `fakufaku/samplerate`
+- Role: Reference audio resampling backend redistributed in the packaged Python dependencies
+- License: MIT
+- Source: https://github.com/tuxu/python-samplerate
+
 ## PocketTTS model assets
 
 - Project: `kyutai/pocket-tts`
