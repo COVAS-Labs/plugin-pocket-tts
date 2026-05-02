@@ -2,6 +2,7 @@
 
 from typing import override, Iterable, Any, Optional
 import os
+import re
 import sys
 import threading
 
@@ -36,6 +37,8 @@ class PocketTTSModel(TTSModel):
 
     DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
     DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_SENTENCES_PER_PASS = 2
+    SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
     TARGET_SAMPLE_RATE = 24000
     STREAM_CHUNK_SAMPLES = 2400
 
@@ -45,12 +48,14 @@ class PocketTTSModel(TTSModel):
         model_dir: str,
         reference_audio_path: str,
         num_steps: int = 2,
+        sentences_per_pass: int = DEFAULT_SENTENCES_PER_PASS,
     ):
         super().__init__("pocket-tts")
         self.plugin_dir = plugin_dir
         self.model_dir = model_dir
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
+        self.sentences_per_pass = max(int(sentences_per_pass), 1)
 
         self._tts: Optional[PocketTTSOnnx] = None
         self._load_lock = threading.Lock()
@@ -161,6 +166,24 @@ class PocketTTSModel(TTSModel):
         for start in range(0, len(pcm), self.STREAM_CHUNK_SAMPLES):
             yield pcm[start : start + self.STREAM_CHUNK_SAMPLES].tobytes()
 
+    def _group_text_for_inference(self, text: str) -> list[str]:
+        normalized = text.strip()
+        if not normalized:
+            return []
+
+        sentences = [
+            sentence.strip()
+            for sentence in self.SENTENCE_SPLIT_PATTERN.split(normalized)
+            if sentence.strip()
+        ]
+        if not sentences:
+            return [normalized]
+
+        return [
+            " ".join(sentences[index : index + self.sentences_per_pass])
+            for index in range(0, len(sentences), self.sentences_per_pass)
+        ]
+
     @override
     def synthesize(self, text: str, voice: str) -> Iterable[bytes]:
         if not text.strip():
@@ -168,17 +191,24 @@ class PocketTTSModel(TTSModel):
 
         tts = self._load_model()
         reference_audio_path = self._resolve_reference_audio_path(self.reference_audio_path, voice)
+        text_passes = self._group_text_for_inference(text)
 
         with self._synthesis_lock:
             yielded_audio = False
-            log("info", f"Streaming PocketTTS audio for {len(text)} characters without pre-chunking")
-            for audio_chunk in tts.stream(text, voice=reference_audio_path):
-                chunk = np.asarray(audio_chunk, dtype=np.float32).reshape(-1)
-                if chunk.size == 0:
-                    continue
-                yielded_audio = True
-                for pcm_chunk in self._pcm16_chunks(chunk, tts.sample_rate):
-                    yield pcm_chunk
+            log(
+                "info",
+                "Streaming PocketTTS audio for "
+                f"{len(text)} characters across {len(text_passes)} inference pass(es) "
+                f"with up to {self.sentences_per_pass} sentence(s) each",
+            )
+            for text_pass in text_passes:
+                for audio_chunk in tts.stream(text_pass, voice=reference_audio_path):
+                    chunk = np.asarray(audio_chunk, dtype=np.float32).reshape(-1)
+                    if chunk.size == 0:
+                        continue
+                    yielded_audio = True
+                    for pcm_chunk in self._pcm16_chunks(chunk, tts.sample_rate):
+                        yield pcm_chunk
 
             if not yielded_audio:
                 raise RuntimeError("PocketTTS returned no audio")
@@ -258,6 +288,29 @@ class PocketTTSPlugin(PluginBase):
                                 max_value=8,
                                 step=1,
                             ),
+                            ParagraphSetting(
+                                key="sentences_per_pass_help",
+                                label=None,
+                                type="paragraph",
+                                readonly=False,
+                                placeholder=None,
+                                content=(
+                                    "Higher values let Pocket TTS keep more sentence context together, "
+                                    "which can sound more natural. If you pass too much text in one "
+                                    "inference pass, the model can break down, so keep this value modest."
+                                ),
+                            ),
+                            NumericalSetting(
+                                key="sentences_per_pass",
+                                label="Sentences per inference pass",
+                                type="number",
+                                readonly=False,
+                                placeholder="2",
+                                default_value=2,
+                                min_value=1,
+                                max_value=20,
+                                step=1,
+                            ),
                         ],
                     )
                 ],
@@ -269,11 +322,15 @@ class PocketTTSPlugin(PluginBase):
         if provider_id == "pocket-tts":
             reference_audio_path = settings.get("reference_audio_path", self.default_reference_audio_path)
             num_steps = int(settings.get("num_steps", 2))
+            sentences_per_pass = int(
+                settings.get("sentences_per_pass", PocketTTSModel.DEFAULT_SENTENCES_PER_PASS)
+            )
             return PocketTTSModel(
                 plugin_dir=self.plugin_dir,
                 model_dir=self.model_dir,
                 reference_audio_path=reference_audio_path,
                 num_steps=num_steps,
+                sentences_per_pass=sentences_per_pass,
             )
 
         raise ValueError(f"Unknown PocketTTS provider: {provider_id}")
@@ -282,7 +339,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.5",
+        version="0.0.6",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
