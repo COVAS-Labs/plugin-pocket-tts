@@ -37,6 +37,7 @@ class PocketTTSModel(TTSModel):
 
     DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
     DEFAULT_TEMPERATURE = 0.7
+    DEFAULT_INTER_PASS_GAP_MS = 150
     DEFAULT_SENTENCES_PER_PASS = 2
     SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
     TARGET_SAMPLE_RATE = 24000
@@ -48,6 +49,7 @@ class PocketTTSModel(TTSModel):
         model_dir: str,
         reference_audio_path: str,
         num_steps: int = 2,
+        inter_pass_gap_ms: int = DEFAULT_INTER_PASS_GAP_MS,
         sentences_per_pass: int = DEFAULT_SENTENCES_PER_PASS,
     ):
         super().__init__("pocket-tts")
@@ -55,6 +57,7 @@ class PocketTTSModel(TTSModel):
         self.model_dir = model_dir
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
+        self.inter_pass_gap_ms = max(int(inter_pass_gap_ms), 0)
         self.sentences_per_pass = max(int(sentences_per_pass), 1)
 
         self._tts: Optional[PocketTTSOnnx] = None
@@ -166,6 +169,14 @@ class PocketTTSModel(TTSModel):
         for start in range(0, len(pcm), self.STREAM_CHUNK_SAMPLES):
             yield pcm[start : start + self.STREAM_CHUNK_SAMPLES].tobytes()
 
+    def _inter_pass_silence_chunks(self) -> Iterable[bytes]:
+        silence_samples = int(round(self.TARGET_SAMPLE_RATE * (self.inter_pass_gap_ms / 1000.0)))
+        if silence_samples <= 0:
+            return
+
+        silence = np.zeros((silence_samples,), dtype=np.float32)
+        yield from self._pcm16_chunks(silence, self.TARGET_SAMPLE_RATE)
+
     def _group_text_for_inference(self, text: str) -> list[str]:
         normalized = text.strip()
         if not normalized:
@@ -201,14 +212,19 @@ class PocketTTSModel(TTSModel):
                 f"{len(text)} characters across {len(text_passes)} inference pass(es) "
                 f"with up to {self.sentences_per_pass} sentence(s) each",
             )
-            for text_pass in text_passes:
+            for pass_index, text_pass in enumerate(text_passes):
+                pass_yielded_audio = False
                 for audio_chunk in tts.stream(text_pass, voice=reference_audio_path):
                     chunk = np.asarray(audio_chunk, dtype=np.float32).reshape(-1)
                     if chunk.size == 0:
                         continue
                     yielded_audio = True
+                    pass_yielded_audio = True
                     for pcm_chunk in self._pcm16_chunks(chunk, tts.sample_rate):
                         yield pcm_chunk
+
+                if pass_yielded_audio and pass_index < len(text_passes) - 1:
+                    yield from self._inter_pass_silence_chunks()
 
             if not yielded_audio:
                 raise RuntimeError("PocketTTS returned no audio")
@@ -311,6 +327,17 @@ class PocketTTSPlugin(PluginBase):
                                 max_value=20,
                                 step=1,
                             ),
+                            NumericalSetting(
+                                key="inter_pass_gap_ms",
+                                label="Gap between passes (ms)",
+                                type="number",
+                                readonly=False,
+                                placeholder="150",
+                                default_value=150,
+                                min_value=0,
+                                max_value=2000,
+                                step=25,
+                            ),
                         ],
                     )
                 ],
@@ -322,6 +349,9 @@ class PocketTTSPlugin(PluginBase):
         if provider_id == "pocket-tts":
             reference_audio_path = settings.get("reference_audio_path", self.default_reference_audio_path)
             num_steps = int(settings.get("num_steps", 2))
+            inter_pass_gap_ms = int(
+                settings.get("inter_pass_gap_ms", PocketTTSModel.DEFAULT_INTER_PASS_GAP_MS)
+            )
             sentences_per_pass = int(
                 settings.get("sentences_per_pass", PocketTTSModel.DEFAULT_SENTENCES_PER_PASS)
             )
@@ -330,6 +360,7 @@ class PocketTTSPlugin(PluginBase):
                 model_dir=self.model_dir,
                 reference_audio_path=reference_audio_path,
                 num_steps=num_steps,
+                inter_pass_gap_ms=inter_pass_gap_ms,
                 sentences_per_pass=sentences_per_pass,
             )
 
@@ -339,7 +370,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.6",
+        version="0.0.7",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

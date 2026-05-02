@@ -37,6 +37,7 @@ The plugin exposes:
 - **Reference audio path**: Accepts either a direct audio file path or a directory. If you point it at the bundled `assets/voices` directory, the plugin prefers `selfie.wav`.
 - **Generation steps**: Higher values improve quality but add latency.
 - **Sentences per inference pass**: Controls how many sentences are grouped into each PocketTTS generation pass. Lower values reduce per-pass latency, while higher values keep more context together.
+- **Gap between passes (ms)**: Adds a short silence between multi-pass chunks so stitched output flows more naturally. Set it to `0` to disable the gap.
 
 ## Development
 
