@@ -11,7 +11,7 @@ This plugin provides offline Text-to-Speech (TTS) for COVAS:NEXT using **PocketT
 - **Offline synthesis**: No internet connection required.
 - **Streaming output**: Streams audio directly from the bundled PocketTTS ONNX runtime.
 - **Voice cloning**: Uses a short reference clip instead of fixed speaker IDs.
-- **Bundled default voice**: The plugin ships with a bundled reference clip and points to `assets/voices/selfie.wav` by default.
+- **Bundled default voice**: The plugin ships with a bundled reference clip and points to `assets/voices/nova.wav` by default.
 
 ## Installation
 
@@ -63,12 +63,12 @@ If the PocketTTS model assets are not present, the pack scripts automatically do
 - `model/english_2026-04/mimi_decoder_int8.onnx`
 - `model/english_2026-04/mimi_encoder.onnx`
 - `model/english_2026-04/text_conditioner.onnx`
-- `assets/voices/selfie.wav`
+- `assets/voices/nova.wav`
 
 ## Licensing
 
 - The bundled PocketTTS model weights are derived from Kyutai PocketTTS and require attribution under `CC-BY-4.0`.
-- The bundled default reference voice `selfie.wav` comes from `kyutai/tts-voices/voice-donations` and is released as `CC0`.
+- The bundled fallback reference voice `selfie.wav` comes from `kyutai/tts-voices/voice-donations` and is released as `CC0`.
 - Third-party attribution details are included in `THIRD_PARTY_NOTICES.md` and are packaged into the release zip.
 
 You can also download the assets explicitly:

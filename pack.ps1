@@ -32,7 +32,7 @@ if (Test-Path "requirements.txt") {
 }
 
 # Ensure PocketTTS ONNX bundle files and bundled reference audio are present
-if ((-not (Test-Path "model\english_2026-04\bundle.json")) -or (-not (Test-Path "assets\voices\selfie.wav"))) {
+if ((-not (Test-Path "model\english_2026-04\bundle.json")) -or ((-not (Test-Path "assets\voices\nova.wav")) -and (-not (Test-Path "assets\voices\selfie.wav")))) {
     if (Test-Path "scripts\download_pocket_tts_assets.ps1") {
         Write-Host "PocketTTS ONNX assets not found; downloading into .\model and .\assets\voices ..."
         .\scripts\download_pocket_tts_assets.ps1

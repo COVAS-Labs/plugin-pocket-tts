@@ -140,7 +140,7 @@ class PocketTTSModel(TTSModel):
                     return selfie_candidate
 
             if os.path.isdir(candidate):
-                for preferred_name in ("selfie.wav", "bria.wav"):
+                for preferred_name in ("nova.wav", "selfie.wav", "bria.wav"):
                     preferred = os.path.join(candidate, preferred_name)
                     if os.path.isfile(preferred):
                         return preferred
@@ -349,7 +349,7 @@ class PocketTTSPlugin(PluginBase):
         self.plugin_dir = PLUGIN_DIR
         self.model_dir = os.path.join(self.plugin_dir, "model")
         self.default_reference_audio_dir = os.path.join(self.plugin_dir, "assets", "voices")
-        self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "selfie.wav")
+        self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "nova.wav")
 
         self.settings_config = PluginSettings(
             key="Pocket TTS",
@@ -481,7 +481,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.9",
+        version="0.0.10",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

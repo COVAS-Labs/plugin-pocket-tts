@@ -40,7 +40,7 @@ if [ -f "requirements.txt" ]; then
 fi
 
 # Ensure PocketTTS ONNX bundle files and bundled reference audio are present
-if [ ! -f "model/english_2026-04/bundle.json" ] || [ ! -f "assets/voices/selfie.wav" ]; then
+if [ ! -f "model/english_2026-04/bundle.json" ] || { [ ! -f "assets/voices/nova.wav" ] && [ ! -f "assets/voices/selfie.wav" ]; }; then
     if [ -f "scripts/download_pocket_tts_assets.sh" ]; then
         echo "PocketTTS ONNX assets not found; downloading into ./model and ./assets/voices ..."
         chmod +x scripts/download_pocket_tts_assets.sh

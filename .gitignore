@@ -1,4 +1,5 @@
 __pycache__
+.DS_Store
 # dist is the output directory for the packaged plugin.
 dist/*
 # deps contains Python dependencies
@@ -8,3 +9,4 @@ model/*
 assets/voices/*
 !model/.gitkeep
 !assets/voices/.gitkeep
+!assets/voices/nova.wav
