@@ -94,70 +94,110 @@ class PocketTTSModel(TTSModel):
             log("info", f"PocketTTS sample rate: {self._tts.sample_rate} Hz")
             return self._tts
 
-    def _normalize_user_path(self, path: str) -> Optional[str]:
+    def _normalize_user_path(self, path: str, relative_base_dir: Optional[str] = None) -> Optional[str]:
         value = (path or "").strip()
         if not value:
             return None
 
         value = os.path.expanduser(os.path.expandvars(value))
         if not os.path.isabs(value):
-            value = os.path.abspath(os.path.join(self.plugin_dir, value))
+            base_dir = relative_base_dir or self.plugin_dir
+            value = os.path.abspath(os.path.join(base_dir, value))
         return value
 
-    def _resolve_reference_audio_candidate(self, path: Optional[str]) -> Optional[str]:
+    def _reference_audio_path_candidates(
+        self,
+        path: Optional[str],
+        relative_base_dir: Optional[str] = None,
+    ) -> list[str]:
         if not path:
-            return None
+            return []
 
-        candidate = self._normalize_user_path(path)
+        candidate = self._normalize_user_path(path, relative_base_dir=relative_base_dir)
         if candidate is None:
-            return None
+            return []
 
-        if os.path.isfile(candidate):
-            return candidate
+        candidates = [candidate]
+        if not os.path.splitext(candidate)[1]:
+            candidates.append(f"{candidate}.wav")
+        return candidates
 
-        # Older plugin versions defaulted to bria.wav. If a persisted config still
-        # points there, transparently fall back to the new CC0 bundled voice.
-        if os.path.basename(candidate).lower() == "bria.wav":
-            selfie_candidate = os.path.join(os.path.dirname(candidate), "selfie.wav")
-            if os.path.isfile(selfie_candidate):
-                return selfie_candidate
+    def _resolve_reference_audio_candidate(
+        self,
+        path: Optional[str],
+        relative_base_dir: Optional[str] = None,
+    ) -> Optional[str]:
+        for candidate in self._reference_audio_path_candidates(
+            path,
+            relative_base_dir=relative_base_dir,
+        ):
+            if os.path.isfile(candidate):
+                return candidate
 
-        if os.path.isdir(candidate):
-            for preferred_name in ("selfie.wav", "bria.wav"):
-                preferred = os.path.join(candidate, preferred_name)
-                if os.path.isfile(preferred):
-                    return preferred
+            # Older plugin versions defaulted to bria.wav. If a persisted config still
+            # points there, transparently fall back to the new CC0 bundled voice.
+            if os.path.basename(candidate).lower() == "bria.wav":
+                selfie_candidate = os.path.join(os.path.dirname(candidate), "selfie.wav")
+                if os.path.isfile(selfie_candidate):
+                    return selfie_candidate
 
-            supported_exts = {".wav", ".flac", ".ogg", ".mp3"}
-            audio_files = []
-            for entry in os.listdir(candidate):
-                full_path = os.path.join(candidate, entry)
-                if not os.path.isfile(full_path):
-                    continue
-                if os.path.splitext(entry)[1].lower() not in supported_exts:
-                    continue
-                audio_files.append(full_path)
+            if os.path.isdir(candidate):
+                for preferred_name in ("selfie.wav", "bria.wav"):
+                    preferred = os.path.join(candidate, preferred_name)
+                    if os.path.isfile(preferred):
+                        return preferred
 
-            if audio_files:
-                return sorted(audio_files)[0]
+                supported_exts = {".wav", ".flac", ".ogg", ".mp3"}
+                audio_files = []
+                for entry in os.listdir(candidate):
+                    full_path = os.path.join(candidate, entry)
+                    if not os.path.isfile(full_path):
+                        continue
+                    if os.path.splitext(entry)[1].lower() not in supported_exts:
+                        continue
+                    audio_files.append(full_path)
+
+                if audio_files:
+                    return sorted(audio_files)[0]
 
         return None
 
+    def _reference_audio_base_dir(self, configured_path: str, fallback_path: str) -> str:
+        configured_candidate = self._normalize_user_path(configured_path)
+        if configured_candidate:
+            if os.path.isdir(configured_candidate):
+                return configured_candidate
+            return os.path.dirname(configured_candidate)
+
+        return os.path.dirname(fallback_path)
+
     def _resolve_reference_audio_path(self, configured_path: str, requested_voice: str) -> str:
         default_voice_dir = os.path.join(self.plugin_dir, "assets", "voices")
-        candidates = [requested_voice, configured_path, default_voice_dir]
+        fallback_path = self._resolve_reference_audio_candidate(configured_path)
+        if fallback_path is None:
+            fallback_path = self._resolve_reference_audio_candidate(default_voice_dir)
 
-        for candidate in candidates:
-            resolved = self._resolve_reference_audio_candidate(candidate)
-            if resolved is not None:
-                if candidate and resolved != self._normalize_user_path(candidate):
-                    log("info", f"Using reference audio '{resolved}'")
-                return resolved
+        if fallback_path is None:
+            raise FileNotFoundError(
+                "Could not resolve a PocketTTS fallback voice file. "
+                f"Checked configured path '{configured_path}' and '{default_voice_dir}'."
+            )
 
-        raise FileNotFoundError(
-            "Could not resolve a PocketTTS reference audio file. "
-            f"Checked requested voice '{requested_voice}', configured path '{configured_path}', and '{default_voice_dir}'."
+        requested_voice_base_dir = self._reference_audio_base_dir(configured_path, fallback_path)
+        resolved_voice = self._resolve_reference_audio_candidate(
+            requested_voice,
+            relative_base_dir=requested_voice_base_dir,
         )
+        if resolved_voice is not None:
+            normalized_requested = self._normalize_user_path(
+                requested_voice,
+                relative_base_dir=requested_voice_base_dir,
+            )
+            if requested_voice and resolved_voice != normalized_requested:
+                log("info", f"Using reference audio '{resolved_voice}'")
+            return resolved_voice
+
+        return fallback_path
 
     def _pcm16_chunks(self, samples: np.ndarray, source_sample_rate: int) -> Iterable[bytes]:
         if source_sample_rate != self.TARGET_SAMPLE_RATE:
@@ -280,14 +320,15 @@ class PocketTTSPlugin(PluginBase):
                                 readonly=False,
                                 placeholder=None,
                                 content=(
-                                    "Pocket TTS clones a voice from a reference clip. "
-                                    "You can point this setting at a file or a directory. "
-                                    "If you point it at the bundled assets directory, the plugin prefers `selfie.wav`."
+                                    "Pocket TTS clones a voice from a reference clip. Configure a fallback voice "
+                                    "file here. When a runtime voice name is provided, the plugin first tries it "
+                                    "as an absolute path or as a path relative to the fallback file's directory. "
+                                    "If the voice name has no extension, `.wav` is tried automatically."
                                 ),
                             ),
                             TextSetting(
                                 key="reference_audio_path",
-                                label="Reference audio path",
+                                label="Fallback voice file",
                                 type="text",
                                 readonly=False,
                                 placeholder=self.default_reference_audio_path,
@@ -370,7 +411,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.7",
+        version="0.0.8",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

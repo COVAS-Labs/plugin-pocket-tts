@@ -34,7 +34,7 @@ Unpack the plugin into the `plugins` folder in the COVAS:NEXT AppData folder, le
 Select **Pocket TTS (Offline)** as your TTS provider in COVAS:NEXT.
 
 The plugin exposes:
-- **Reference audio path**: Accepts either a direct audio file path or a directory. If you point it at the bundled `assets/voices` directory, the plugin prefers `selfie.wav`.
+- **Fallback voice file**: Sets the default reference clip. Runtime voice names are first tried as absolute paths or as paths relative to the fallback file's directory. If a voice name has no extension, the plugin also tries `.wav` automatically.
 - **Generation steps**: Higher values improve quality but add latency.
 - **Sentences per inference pass**: Controls how many sentences are grouped into each PocketTTS generation pass. Lower values reduce per-pass latency, while higher values keep more context together.
 - **Gap between passes (ms)**: Adds a short silence between multi-pass chunks so stitched output flows more naturally. Set it to `0` to disable the gap.
