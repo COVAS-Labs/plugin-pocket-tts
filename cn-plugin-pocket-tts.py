@@ -2,7 +2,6 @@
 
 from typing import override, Iterable, Any, Optional
 import os
-import re
 import sys
 import threading
 
@@ -38,8 +37,7 @@ class PocketTTSModel(TTSModel):
     DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_INTER_PASS_GAP_MS = 150
-    DEFAULT_SENTENCES_PER_PASS = 2
-    SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+|\n+")
+    DEFAULT_MAX_TOKENS = 50
     TARGET_SAMPLE_RATE = 24000
     STREAM_CHUNK_SAMPLES = 2400
 
@@ -50,7 +48,7 @@ class PocketTTSModel(TTSModel):
         reference_audio_path: str,
         num_steps: int = 2,
         inter_pass_gap_ms: int = DEFAULT_INTER_PASS_GAP_MS,
-        sentences_per_pass: int = DEFAULT_SENTENCES_PER_PASS,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ):
         super().__init__("pocket-tts")
         self.plugin_dir = plugin_dir
@@ -58,7 +56,7 @@ class PocketTTSModel(TTSModel):
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
         self.inter_pass_gap_ms = max(int(inter_pass_gap_ms), 0)
-        self.sentences_per_pass = max(int(sentences_per_pass), 1)
+        self.max_tokens = max(int(max_tokens), 1)
 
         self._tts: Optional[PocketTTSOnnx] = None
         self._load_lock = threading.Lock()
@@ -217,23 +215,95 @@ class PocketTTSModel(TTSModel):
         silence = np.zeros((silence_samples,), dtype=np.float32)
         yield from self._pcm16_chunks(silence, self.TARGET_SAMPLE_RATE)
 
+    def _find_boundary_indices(self, list_of_tokens: list[int], boundary_tokens: list[int]) -> list[int]:
+        indices = [0]
+        previous_was_boundary = False
+        for index, token in enumerate(list_of_tokens):
+            if token in boundary_tokens:
+                previous_was_boundary = True
+            else:
+                if previous_was_boundary:
+                    indices.append(index)
+                previous_was_boundary = False
+        indices.append(len(list_of_tokens))
+        return indices
+
+    def _segments_from_boundaries(
+        self,
+        tokenizer: spm.SentencePieceProcessor,
+        list_of_tokens: list[int],
+        boundary_indices: list[int],
+    ) -> list[tuple[int, str]]:
+        segments = []
+        for index in range(len(boundary_indices) - 1):
+            start = boundary_indices[index]
+            end = boundary_indices[index + 1]
+            text = tokenizer.Decode(list_of_tokens[start:end])
+            segments.append((end - start, text))
+        return segments
+
     def _group_text_for_inference(self, text: str) -> list[str]:
-        normalized = text.strip()
-        if not normalized:
+        tts = self._load_model()
+        prepared_text, _ = tts._prepare_text_prompt(text)
+        prepared_text = prepared_text.strip()
+        if not prepared_text:
             return []
 
-        sentences = [
-            sentence.strip()
-            for sentence in self.SENTENCE_SPLIT_PATTERN.split(normalized)
-            if sentence.strip()
-        ]
-        if not sentences:
-            return [normalized]
+        tokenizer = tts.tokenizer
+        list_of_tokens = tokenizer.Encode(prepared_text)
 
-        return [
-            " ".join(sentences[index : index + self.sentences_per_pass])
-            for index in range(0, len(sentences), self.sentences_per_pass)
-        ]
+        end_of_sentence_tokens = tokenizer.Encode(".!...?")[1:]
+        sentence_boundaries = self._find_boundary_indices(list_of_tokens, end_of_sentence_tokens)
+        token_count_and_sentences = self._segments_from_boundaries(
+            tokenizer,
+            list_of_tokens,
+            sentence_boundaries,
+        )
+
+        fallback_tokens = tokenizer.Encode(",;:")[1:]
+        refined_segments: list[tuple[int, str]] = []
+        for token_count, sentence in token_count_and_sentences:
+            if token_count <= self.max_tokens:
+                refined_segments.append((token_count, sentence))
+                continue
+
+            sub_tokens = tokenizer.Encode(sentence.strip())
+            sub_boundaries = self._find_boundary_indices(sub_tokens, fallback_tokens)
+            sub_segments = self._segments_from_boundaries(tokenizer, sub_tokens, sub_boundaries)
+            if len(sub_segments) > 1:
+                refined_segments.extend(sub_segments)
+            else:
+                refined_segments.append((token_count, sentence))
+
+        chunks: list[str] = []
+        current_chunk = ""
+        current_chunk_token_count = 0
+        for token_count, sentence in refined_segments:
+            if current_chunk == "":
+                current_chunk = sentence
+                current_chunk_token_count = token_count
+                continue
+
+            if current_chunk_token_count + token_count > self.max_tokens:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence
+                current_chunk_token_count = token_count
+            else:
+                current_chunk += " " + sentence
+                current_chunk_token_count += token_count
+
+        if current_chunk != "":
+            chunks.append(current_chunk.strip())
+
+        for chunk in chunks:
+            chunk_tokens = tokenizer.Encode(chunk.strip())
+            if len(chunk_tokens) > self.max_tokens:
+                log(
+                    "warning",
+                    f"PocketTTS chunk has {len(chunk_tokens)} tokens (max {self.max_tokens}), generation may skip words: '{chunk[:50]}...'",
+                )
+
+        return chunks
 
     @override
     def synthesize(self, text: str, voice: str) -> Iterable[bytes]:
@@ -250,7 +320,7 @@ class PocketTTSModel(TTSModel):
                 "info",
                 "Streaming PocketTTS audio for "
                 f"{len(text)} characters across {len(text_passes)} inference pass(es) "
-                f"with up to {self.sentences_per_pass} sentence(s) each",
+                f"with max {self.max_tokens} token(s) per pass",
             )
             for pass_index, text_pass in enumerate(text_passes):
                 pass_yielded_audio = False
@@ -346,26 +416,26 @@ class PocketTTSPlugin(PluginBase):
                                 step=1,
                             ),
                             ParagraphSetting(
-                                key="sentences_per_pass_help",
+                                key="max_tokens_help",
                                 label=None,
                                 type="paragraph",
                                 readonly=False,
                                 placeholder=None,
                                 content=(
-                                    "Higher values let Pocket TTS keep more sentence context together, "
-                                    "which can sound more natural. If you pass too much text in one "
-                                    "inference pass, the model can break down, so keep this value modest."
+                                    "Pocket TTS follows the upstream chunking logic here: it first splits on "
+                                    "sentence punctuation, then falls back to commas, semicolons, and colons if a "
+                                    "segment is too long. Each inference pass is packed up to this token limit."
                                 ),
                             ),
                             NumericalSetting(
-                                key="sentences_per_pass",
-                                label="Sentences per inference pass",
+                                key="max_tokens",
+                                label="Max tokens per inference pass",
                                 type="number",
                                 readonly=False,
-                                placeholder="2",
-                                default_value=2,
+                                placeholder="50",
+                                default_value=50,
                                 min_value=1,
-                                max_value=20,
+                                max_value=400,
                                 step=1,
                             ),
                             NumericalSetting(
@@ -393,8 +463,8 @@ class PocketTTSPlugin(PluginBase):
             inter_pass_gap_ms = int(
                 settings.get("inter_pass_gap_ms", PocketTTSModel.DEFAULT_INTER_PASS_GAP_MS)
             )
-            sentences_per_pass = int(
-                settings.get("sentences_per_pass", PocketTTSModel.DEFAULT_SENTENCES_PER_PASS)
+            max_tokens = int(
+                settings.get("max_tokens", PocketTTSModel.DEFAULT_MAX_TOKENS)
             )
             return PocketTTSModel(
                 plugin_dir=self.plugin_dir,
@@ -402,7 +472,7 @@ class PocketTTSPlugin(PluginBase):
                 reference_audio_path=reference_audio_path,
                 num_steps=num_steps,
                 inter_pass_gap_ms=inter_pass_gap_ms,
-                sentences_per_pass=sentences_per_pass,
+                max_tokens=max_tokens,
             )
 
         raise ValueError(f"Unknown PocketTTS provider: {provider_id}")
@@ -411,7 +481,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.8",
+        version="0.0.9",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
