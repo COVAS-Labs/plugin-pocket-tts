@@ -12,6 +12,7 @@ if os.path.isdir(DEPS_DIR) and DEPS_DIR not in sys.path:
     sys.path.insert(0, DEPS_DIR)
 
 import numpy as np
+import sentencepiece as spm
 
 try:
     from .vendor.pocket_tts_onnx import PocketTTSOnnx
@@ -481,7 +482,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.10",
+        version="0.0.11",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
