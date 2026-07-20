@@ -31,13 +31,25 @@ Unpack the plugin into the `plugins` folder in the COVAS:NEXT AppData folder, le
 
 ## Configuration
 
-Select **Pocket TTS (Offline)** as your TTS provider in COVAS:NEXT.
+Select **PocketTTS (Local)** as your TTS provider in COVAS:NEXT.
 
 The plugin exposes:
 - **Fallback voice file**: Sets the default reference clip. Runtime voice names are first tried as absolute paths or as paths relative to the fallback file's directory. If a voice name has no extension, the plugin also tries `.wav` automatically.
 - **Generation steps**: Higher values improve quality but add latency.
 - **Max tokens per inference pass**: Uses the official Pocket TTS chunking logic. The plugin first splits on sentence punctuation, then falls back to commas, semicolons, and colons when a segment is too long, while packing each pass up to the configured token limit. The default is `50`.
 - **Gap between passes (ms)**: Adds a short silence between multi-pass chunks so stitched output flows more naturally. Set it to `0` to disable the gap.
+
+## Model Formats
+
+The packaged bundle uses INT8 weights. When complete INT8 and FP32 weight sets are both available, the provider settings show a **Model format** selector.
+
+To add FP32, download the matching PocketTTS ONNX bundle and copy these files into `model/english_2026-04/` alongside the packaged shared files:
+
+- `flow_lm_main.onnx`
+- `flow_lm_flow.onnx`
+- `mimi_decoder.onnx`
+
+Restart COVAS:NEXT after adding the files, then select **FP32** from the provider settings. The selector is hidden until both complete formats are present.
 
 ## Development
 

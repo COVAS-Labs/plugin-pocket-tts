@@ -25,11 +25,26 @@ from lib.PluginSettingDefinitions import (
     ModelProviderDefinition,
     SettingsGrid,
     ParagraphSetting,
+    SelectOption,
+    SelectSetting,
     TextSetting,
     NumericalSetting,
 )
 from lib.PluginBase import PluginBase, PluginManifest
 from lib.Logger import log
+
+
+def _discover_model_formats(model_dir: str) -> list[str]:
+    bundle_dir = os.path.join(model_dir, PocketTTSModel.DEFAULT_LANGUAGE_BUNDLE)
+    format_files = {
+        "int8": ("flow_lm_main_int8.onnx", "flow_lm_flow_int8.onnx", "mimi_decoder_int8.onnx"),
+        "fp32": ("flow_lm_main.onnx", "flow_lm_flow.onnx", "mimi_decoder.onnx"),
+    }
+    return [
+        model_format
+        for model_format, filenames in format_files.items()
+        if all(os.path.isfile(os.path.join(bundle_dir, filename)) for filename in filenames)
+    ]
 
 
 class PocketTTSModel(TTSModel):
@@ -48,6 +63,7 @@ class PocketTTSModel(TTSModel):
         model_dir: str,
         reference_audio_path: str,
         num_steps: int = 2,
+        model_format: str = "int8",
         inter_pass_gap_ms: int = DEFAULT_INTER_PASS_GAP_MS,
         max_tokens: int = DEFAULT_MAX_TOKENS,
     ):
@@ -56,6 +72,7 @@ class PocketTTSModel(TTSModel):
         self.model_dir = model_dir
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
+        self.model_format = model_format
         self.inter_pass_gap_ms = max(int(inter_pass_gap_ms), 0)
         self.max_tokens = max(int(max_tokens), 1)
 
@@ -86,7 +103,7 @@ class PocketTTSModel(TTSModel):
             self._tts = PocketTTSOnnx(
                 models_dir=self.model_dir,
                 language=self.DEFAULT_LANGUAGE_BUNDLE,
-                precision="int8",
+                precision=self.model_format,
                 temperature=self.DEFAULT_TEMPERATURE,
                 lsd_steps=self.num_steps,
             )
@@ -351,6 +368,24 @@ class PocketTTSPlugin(PluginBase):
         self.model_dir = os.path.join(self.plugin_dir, "model")
         self.default_reference_audio_dir = os.path.join(self.plugin_dir, "assets", "voices")
         self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "nova.wav")
+        model_formats = _discover_model_formats(self.model_dir)
+        provider_fields = []
+        if len(model_formats) > 1:
+            provider_fields.append(
+                SelectSetting(
+                    key="model_format",
+                    label="Model format",
+                    type="select",
+                    readonly=False,
+                    placeholder=None,
+                    default_value=model_formats[0],
+                    select_options=[
+                        SelectOption(key=model_format, label=model_format.upper(), value=model_format, disabled=False)
+                        for model_format in model_formats
+                    ],
+                    multi_select=False,
+                )
+            )
 
         self.settings_config = PluginSettings(
             key="Pocket TTS",
@@ -378,12 +413,12 @@ class PocketTTSPlugin(PluginBase):
             ModelProviderDefinition(
                 kind="tts",
                 id="pocket-tts",
-                label="Pocket TTS (Offline)",
+                label="PocketTTS (Local)",
                 settings_config=[
                     SettingsGrid(
                         key="settings",
                         label="Settings",
-                        fields=[
+                        fields=provider_fields + [
                             ParagraphSetting(
                                 key="reference_audio_help",
                                 label=None,
@@ -461,6 +496,10 @@ class PocketTTSPlugin(PluginBase):
         if provider_id == "pocket-tts":
             reference_audio_path = settings.get("reference_audio_path", self.default_reference_audio_path)
             num_steps = int(settings.get("num_steps", 2))
+            model_formats = _discover_model_formats(self.model_dir)
+            model_format = str(settings.get("model_format", model_formats[0] if model_formats else "int8"))
+            if model_format not in model_formats:
+                model_format = model_formats[0] if model_formats else "int8"
             inter_pass_gap_ms = int(
                 settings.get("inter_pass_gap_ms", PocketTTSModel.DEFAULT_INTER_PASS_GAP_MS)
             )
@@ -472,6 +511,7 @@ class PocketTTSPlugin(PluginBase):
                 model_dir=self.model_dir,
                 reference_audio_path=reference_audio_path,
                 num_steps=num_steps,
+                model_format=model_format,
                 inter_pass_gap_ms=inter_pass_gap_ms,
                 max_tokens=max_tokens,
             )
@@ -482,7 +522,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.11",
+        version="0.0.12",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
