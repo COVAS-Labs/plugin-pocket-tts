@@ -33,24 +33,72 @@ from lib.PluginSettingDefinitions import (
 from lib.PluginBase import PluginBase, PluginManifest
 from lib.Logger import log
 
+DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
+MODEL_FORMAT_FILES = {
+    "int8": ("flow_lm_main_int8.onnx", "flow_lm_flow_int8.onnx", "mimi_decoder_int8.onnx"),
+    "fp32": ("flow_lm_main.onnx", "flow_lm_flow.onnx", "mimi_decoder.onnx"),
+}
+LANGUAGE_LABELS = {
+    "english_2026-04": "English",
+    "french_24l": "French (24-layer)",
+    "german": "German",
+    "german_24l": "German (24-layer)",
+    "italian": "Italian",
+    "italian_24l": "Italian (24-layer)",
+    "portuguese": "Portuguese",
+    "portuguese_24l": "Portuguese (24-layer)",
+    "spanish": "Spanish",
+    "spanish_24l": "Spanish (24-layer)",
+}
 
-def _discover_model_formats(model_dir: str) -> list[str]:
-    bundle_dir = os.path.join(model_dir, PocketTTSModel.DEFAULT_LANGUAGE_BUNDLE)
-    format_files = {
-        "int8": ("flow_lm_main_int8.onnx", "flow_lm_flow_int8.onnx", "mimi_decoder_int8.onnx"),
-        "fp32": ("flow_lm_main.onnx", "flow_lm_flow.onnx", "mimi_decoder.onnx"),
-    }
+
+def _discover_model_formats(model_dir: str, language_bundle: str) -> list[str]:
+    bundle_dir = os.path.join(model_dir, language_bundle)
     return [
         model_format
-        for model_format, filenames in format_files.items()
+        for model_format, filenames in MODEL_FORMAT_FILES.items()
         if all(os.path.isfile(os.path.join(bundle_dir, filename)) for filename in filenames)
     ]
+
+
+def _discover_model_bundles(model_dir: str) -> list[str]:
+    try:
+        bundle_names = sorted(os.listdir(model_dir))
+    except OSError:
+        return []
+
+    bundles = []
+    for bundle_name in bundle_names:
+        bundle_dir = os.path.join(model_dir, bundle_name)
+        required_files = ("bundle.json", "tokenizer.model", "mimi_encoder.onnx", "text_conditioner.onnx")
+        if not os.path.isdir(bundle_dir) or not all(
+            os.path.isfile(os.path.join(bundle_dir, filename)) for filename in required_files
+        ):
+            continue
+        if _discover_model_formats(model_dir, bundle_name):
+            bundles.append(bundle_name)
+    return bundles
+
+
+def _default_model_bundle(model_bundles: list[str]) -> str:
+    if DEFAULT_LANGUAGE_BUNDLE in model_bundles:
+        return DEFAULT_LANGUAGE_BUNDLE
+    return model_bundles[0] if model_bundles else DEFAULT_LANGUAGE_BUNDLE
+
+
+def _shared_model_formats(model_dir: str, model_bundles: list[str]) -> list[str]:
+    if not model_bundles:
+        return []
+    formats = set(_discover_model_formats(model_dir, model_bundles[0]))
+    for model_bundle in model_bundles[1:]:
+        formats.intersection_update(_discover_model_formats(model_dir, model_bundle))
+    return [model_format for model_format in MODEL_FORMAT_FILES if model_format in formats]
 
 
 class PocketTTSModel(TTSModel):
     """PocketTTS text-to-speech model implementation."""
 
-    DEFAULT_LANGUAGE_BUNDLE = "english_2026-04"
+    DEFAULT_LANGUAGE_BUNDLE = DEFAULT_LANGUAGE_BUNDLE
     DEFAULT_TEMPERATURE = 0.7
     DEFAULT_INTER_PASS_GAP_MS = 150
     DEFAULT_MAX_TOKENS = 50
@@ -63,6 +111,7 @@ class PocketTTSModel(TTSModel):
         model_dir: str,
         reference_audio_path: str,
         num_steps: int = 2,
+        language_bundle: str = DEFAULT_LANGUAGE_BUNDLE,
         model_format: str = "int8",
         inter_pass_gap_ms: int = DEFAULT_INTER_PASS_GAP_MS,
         max_tokens: int = DEFAULT_MAX_TOKENS,
@@ -72,6 +121,7 @@ class PocketTTSModel(TTSModel):
         self.model_dir = model_dir
         self.reference_audio_path = reference_audio_path
         self.num_steps = max(int(num_steps), 1)
+        self.language_bundle = language_bundle
         self.model_format = model_format
         self.inter_pass_gap_ms = max(int(inter_pass_gap_ms), 0)
         self.max_tokens = max(int(max_tokens), 1)
@@ -88,7 +138,7 @@ class PocketTTSModel(TTSModel):
             if self._tts is not None:
                 return self._tts
 
-            bundle_dir = os.path.join(self.model_dir, self.DEFAULT_LANGUAGE_BUNDLE)
+            bundle_dir = os.path.join(self.model_dir, self.language_bundle)
             bundle_manifest = os.path.join(bundle_dir, "bundle.json")
             if not os.path.isfile(bundle_manifest):
                 raise FileNotFoundError(
@@ -102,7 +152,7 @@ class PocketTTSModel(TTSModel):
             )
             self._tts = PocketTTSOnnx(
                 models_dir=self.model_dir,
-                language=self.DEFAULT_LANGUAGE_BUNDLE,
+                language=self.language_bundle,
                 precision=self.model_format,
                 temperature=self.DEFAULT_TEMPERATURE,
                 lsd_steps=self.num_steps,
@@ -368,8 +418,31 @@ class PocketTTSPlugin(PluginBase):
         self.model_dir = os.path.join(self.plugin_dir, "model")
         self.default_reference_audio_dir = os.path.join(self.plugin_dir, "assets", "voices")
         self.default_reference_audio_path = os.path.join(self.default_reference_audio_dir, "nova.wav")
-        model_formats = _discover_model_formats(self.model_dir)
+        model_bundles = _discover_model_bundles(self.model_dir)
+        model_formats = _shared_model_formats(self.model_dir, model_bundles)
         provider_fields = []
+        if len(model_bundles) > 1:
+            default_bundle = _default_model_bundle(model_bundles)
+            provider_fields.append(
+                SelectSetting(
+                    key="language_bundle",
+                    label="Language",
+                    type="select",
+                    readonly=False,
+                    placeholder=None,
+                    default_value=default_bundle,
+                    select_options=[
+                        SelectOption(
+                            key=model_bundle,
+                            label=LANGUAGE_LABELS.get(model_bundle, model_bundle),
+                            value=model_bundle,
+                            disabled=False,
+                        )
+                        for model_bundle in model_bundles
+                    ],
+                    multi_select=False,
+                )
+            )
         if len(model_formats) > 1:
             provider_fields.append(
                 SelectSetting(
@@ -496,7 +569,11 @@ class PocketTTSPlugin(PluginBase):
         if provider_id == "pocket-tts":
             reference_audio_path = settings.get("reference_audio_path", self.default_reference_audio_path)
             num_steps = int(settings.get("num_steps", 2))
-            model_formats = _discover_model_formats(self.model_dir)
+            model_bundles = _discover_model_bundles(self.model_dir)
+            language_bundle = str(settings.get("language_bundle", _default_model_bundle(model_bundles)))
+            if language_bundle not in model_bundles:
+                language_bundle = _default_model_bundle(model_bundles)
+            model_formats = _discover_model_formats(self.model_dir, language_bundle)
             model_format = str(settings.get("model_format", model_formats[0] if model_formats else "int8"))
             if model_format not in model_formats:
                 model_format = model_formats[0] if model_formats else "int8"
@@ -511,6 +588,7 @@ class PocketTTSPlugin(PluginBase):
                 model_dir=self.model_dir,
                 reference_audio_path=reference_audio_path,
                 num_steps=num_steps,
+                language_bundle=language_bundle,
                 model_format=model_format,
                 inter_pass_gap_ms=inter_pass_gap_ms,
                 max_tokens=max_tokens,
@@ -522,7 +600,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.12",
+        version="0.0.13",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

@@ -5,17 +5,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODEL_DIR="$PLUGIN_DIR/model"
-MODEL_BUNDLE="english_2026-04"
+MODEL_BUNDLE="${MODEL_BUNDLE:-english_2026-04}"
 MODEL_BUNDLE_DIR="$MODEL_DIR/$MODEL_BUNDLE"
 VOICE_DIR="$PLUGIN_DIR/assets/voices"
 TMP_DIR="$PLUGIN_DIR/.tmp/pocket-tts"
 MODEL_BASE_URL="https://huggingface.co/KevinAHM/pocket-tts-onnx/resolve/main/onnx/$MODEL_BUNDLE"
 DEFAULT_VOICE_URL="https://huggingface.co/kyutai/tts-voices/resolve/main/voice-donations/Selfie.wav"
 
+case "$MODEL_BUNDLE" in
+    ""|.*|*/*|*\\*|*[!A-Za-z0-9_-]*)
+        echo "Invalid model bundle name: $MODEL_BUNDLE" >&2
+        exit 1
+        ;;
+esac
+
 mkdir -p "$MODEL_DIR" "$MODEL_BUNDLE_DIR" "$VOICE_DIR" "$TMP_DIR"
 rm -rf "$TMP_DIR"/*
 
-echo "Downloading PocketTTS ONNX bundle assets..."
+echo "Downloading PocketTTS ONNX bundle '$MODEL_BUNDLE'..."
 
 rm -f \
     "$MODEL_DIR/lm_flow.int8.onnx" \

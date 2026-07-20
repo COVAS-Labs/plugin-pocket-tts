@@ -1,7 +1,11 @@
+param(
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_-]*$')]
+    [string]$ModelBundle = "english_2026-04"
+)
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PluginDir = Split-Path -Parent $ScriptDir
 $ModelDir = Join-Path $PluginDir "model"
-$ModelBundle = "english_2026-04"
 $ModelBundleDir = Join-Path $ModelDir $ModelBundle
 $VoiceDir = Join-Path $PluginDir "assets\voices"
 $TmpDir = Join-Path $PluginDir ".tmp\pocket-tts"
@@ -16,7 +20,7 @@ if (Test-Path $TmpDir) {
 }
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 
-Write-Host "Downloading PocketTTS ONNX bundle assets..."
+Write-Host "Downloading PocketTTS ONNX bundle '$ModelBundle'..."
 
 @(
     "lm_flow.int8.onnx",

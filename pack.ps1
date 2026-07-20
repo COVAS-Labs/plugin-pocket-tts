@@ -43,7 +43,7 @@ if ((-not (Test-Path "model\english_2026-04\bundle.json")) -or ((-not (Test-Path
 }
 
 # Remember to add any additional files, and change the name of the plugin
-$artifacts = "cn-plugin-pocket-tts.py", "requirements.txt", "manifest.json", "__init__.py", "THIRD_PARTY_NOTICES.md"
+$artifacts = "cn-plugin-pocket-tts.py", "requirements.txt", "manifest.json", "__init__.py", "THIRD_PARTY_NOTICES.md", "scripts"
 
 if (Test-Path "deps") {
     $artifacts += "deps"

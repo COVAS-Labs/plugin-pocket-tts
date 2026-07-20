@@ -39,11 +39,29 @@ The plugin exposes:
 - **Max tokens per inference pass**: Uses the official Pocket TTS chunking logic. The plugin first splits on sentence punctuation, then falls back to commas, semicolons, and colons when a segment is too long, while packing each pass up to the configured token limit. The default is `50`.
 - **Gap between passes (ms)**: Adds a short silence between multi-pass chunks so stitched output flows more naturally. Set it to `0` to disable the gap.
 
+## Additional Languages
+
+English is the only bundled language. The plugin automatically discovers complete language bundles under `model/` and shows a **Language** selector when more than one is installed.
+
+The supported ONNX bundle names are `french_24l`, `german`, `german_24l`, `italian`, `italian_24l`, `portuguese`, `portuguese_24l`, `spanish`, and `spanish_24l`. The standard bundles are smaller and faster; the `24l` bundles use more layers for higher quality at a higher memory and latency cost.
+
+Download an additional INT8 language bundle with the included script:
+
+```bash
+MODEL_BUNDLE=spanish ./scripts/download_pocket_tts_assets.sh
+```
+
+```powershell
+.\scripts\download_pocket_tts_assets.ps1 -ModelBundle spanish
+```
+
+The script stores the complete bundle in `model/spanish/` without changing the bundled English files. Restart COVAS:NEXT after downloading, select the new language, and use a reference clip spoken in that language for best voice-cloning results.
+
 ## Model Formats
 
-The packaged bundle uses INT8 weights. When complete INT8 and FP32 weight sets are both available, the provider settings show a **Model format** selector.
+The packaged bundle uses INT8 weights. When complete INT8 and FP32 weight sets are available for every installed language, the provider settings show a **Model format** selector.
 
-To add FP32, download the matching PocketTTS ONNX bundle and copy these files into `model/english_2026-04/` alongside the packaged shared files:
+To add FP32, download the matching PocketTTS ONNX bundle and copy these files into the relevant language directory, such as `model/english_2026-04/`, alongside the packaged shared files:
 
 - `flow_lm_main.onnx`
 - `flow_lm_flow.onnx`

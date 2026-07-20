@@ -56,6 +56,7 @@ artifacts=(
     "cn-plugin-pocket-tts.py"
     "requirements.txt"
     "manifest.json" "__init__.py" "THIRD_PARTY_NOTICES.md"
+    "scripts"
 )
 
 if [ -d "deps" ]; then
