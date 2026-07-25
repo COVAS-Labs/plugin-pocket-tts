@@ -44,6 +44,7 @@ class PocketTTSOnnx:
         device: str = "auto",
         temperature: float = 0.7,
         lsd_steps: int = 2,
+        num_threads: int = max(1, (os.cpu_count() or 1) // 2),
     ):
         if precision not in self.VALID_PRECISIONS:
             raise ValueError(f"precision must be one of {self.VALID_PRECISIONS}, got '{precision}'")
@@ -58,6 +59,7 @@ class PocketTTSOnnx:
         self.precision = precision
         self.temperature = float(temperature)
         self.lsd_steps = int(lsd_steps)
+        self.num_threads = max(1, int(num_threads))
         self.providers = self._get_providers(device)
 
         self.sample_rate = int(self.metadata["sample_rate"])
@@ -129,7 +131,7 @@ class PocketTTSOnnx:
 
     def _make_session_options(self) -> ort.SessionOptions:
         opts = ort.SessionOptions()
-        opts.intra_op_num_threads = min(os.cpu_count() or 4, 4)
+        opts.intra_op_num_threads = self.num_threads
         opts.inter_op_num_threads = 1
         return opts
 

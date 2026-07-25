@@ -50,6 +50,7 @@ LANGUAGE_LABELS = {
     "spanish": "Spanish",
     "spanish_24l": "Spanish (24-layer)",
 }
+DEFAULT_ONNX_THREADS = max(1, (os.cpu_count() or 1) // 2)
 
 
 def _discover_model_formats(model_dir: str, language_bundle: str) -> list[str]:
@@ -115,6 +116,7 @@ class PocketTTSModel(TTSModel):
         model_format: str = "int8",
         inter_pass_gap_ms: int = DEFAULT_INTER_PASS_GAP_MS,
         max_tokens: int = DEFAULT_MAX_TOKENS,
+        onnx_threads: int = DEFAULT_ONNX_THREADS,
     ):
         super().__init__("pocket-tts")
         self.plugin_dir = plugin_dir
@@ -125,6 +127,7 @@ class PocketTTSModel(TTSModel):
         self.model_format = model_format
         self.inter_pass_gap_ms = max(int(inter_pass_gap_ms), 0)
         self.max_tokens = max(int(max_tokens), 1)
+        self.onnx_threads = max(1, int(onnx_threads))
 
         self._tts: Optional[PocketTTSOnnx] = None
         self._load_lock = threading.Lock()
@@ -156,6 +159,7 @@ class PocketTTSModel(TTSModel):
                 precision=self.model_format,
                 temperature=self.DEFAULT_TEMPERATURE,
                 lsd_steps=self.num_steps,
+                num_threads=self.onnx_threads,
             )
             log("info", f"PocketTTS sample rate: {self._tts.sample_rate} Hz")
             return self._tts
@@ -514,6 +518,17 @@ class PocketTTSPlugin(PluginBase):
                                 default_value=self.default_reference_audio_path,
                             ),
                             NumericalSetting(
+                                key="onnx_threads",
+                                label="CPU Threads",
+                                type="number",
+                                readonly=False,
+                                placeholder=str(DEFAULT_ONNX_THREADS),
+                                default_value=DEFAULT_ONNX_THREADS,
+                                min_value=1,
+                                max_value=max(1, os.cpu_count() or 1),
+                                step=1,
+                            ),
+                            NumericalSetting(
                                 key="num_steps",
                                 label="Generation steps",
                                 type="number",
@@ -583,6 +598,7 @@ class PocketTTSPlugin(PluginBase):
             max_tokens = int(
                 settings.get("max_tokens", PocketTTSModel.DEFAULT_MAX_TOKENS)
             )
+            onnx_threads = int(settings.get("onnx_threads", DEFAULT_ONNX_THREADS))
             return PocketTTSModel(
                 plugin_dir=self.plugin_dir,
                 model_dir=self.model_dir,
@@ -592,6 +608,7 @@ class PocketTTSPlugin(PluginBase):
                 model_format=model_format,
                 inter_pass_gap_ms=inter_pass_gap_ms,
                 max_tokens=max_tokens,
+                onnx_threads=onnx_threads,
             )
 
         raise ValueError(f"Unknown PocketTTS provider: {provider_id}")
@@ -600,7 +617,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.13",
+        version="0.0.14",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
