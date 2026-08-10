@@ -44,7 +44,7 @@ class PocketTTSOnnx:
         device: str = "auto",
         temperature: float = 0.7,
         lsd_steps: int = 2,
-        num_threads: int = max(1, (os.cpu_count() or 1) // 2),
+        num_threads: int = min(4, max(1, (os.cpu_count() or 1) // 2)),
     ):
         if precision not in self.VALID_PRECISIONS:
             raise ValueError(f"precision must be one of {self.VALID_PRECISIONS}, got '{precision}'")

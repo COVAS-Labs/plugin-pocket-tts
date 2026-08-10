@@ -50,7 +50,29 @@ LANGUAGE_LABELS = {
     "spanish": "Spanish",
     "spanish_24l": "Spanish (24-layer)",
 }
-DEFAULT_ONNX_THREADS = max(1, (os.cpu_count() or 1) // 2)
+DEFAULT_ONNX_THREADS = min(4, max(1, (os.cpu_count() or 1) // 2))
+SETTINGS_SCHEMA_VERSION = 1
+
+
+def _migrate_settings(settings: dict[str, Any], from_version: int) -> None:
+    if from_version == 0:
+        try:
+            if int(settings.get("onnx_threads", DEFAULT_ONNX_THREADS)) > 4:
+                settings["onnx_threads"] = 4
+        except (TypeError, ValueError):
+            pass
+
+
+def _apply_pending_migrations(settings: dict[str, Any]) -> None:
+    try:
+        version = int(settings.get("settings_version", 0))
+    except (TypeError, ValueError):
+        version = 0
+
+    while version < SETTINGS_SCHEMA_VERSION:
+        _migrate_settings(settings, version)
+        version += 1
+        settings["settings_version"] = version
 
 
 def _discover_model_formats(model_dir: str, language_bundle: str) -> list[str]:
@@ -415,6 +437,8 @@ class PocketTTSModel(TTSModel):
 class PocketTTSPlugin(PluginBase):
     """Plugin providing PocketTTS services."""
 
+    settings_schema_version = SETTINGS_SCHEMA_VERSION
+
     def __init__(self, plugin_manifest: PluginManifest):
         super().__init__(plugin_manifest)
 
@@ -580,8 +604,13 @@ class PocketTTSPlugin(PluginBase):
         ]
 
     @override
+    def migrate_settings(self, settings: dict[str, Any], from_version: int) -> None:
+        _migrate_settings(settings, from_version)
+
+    @override
     def create_model(self, provider_id: str, settings: dict[str, Any]) -> TTSModel:
         if provider_id == "pocket-tts":
+            _apply_pending_migrations(settings)
             reference_audio_path = settings.get("reference_audio_path", self.default_reference_audio_path)
             num_steps = int(settings.get("num_steps", 2))
             model_bundles = _discover_model_bundles(self.model_dir)
@@ -617,7 +646,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.14",
+        version="0.0.15",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )

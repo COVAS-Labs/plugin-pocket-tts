@@ -1,7 +1,7 @@
 {
     "guid": "b7ddc677-0cfc-4081-af61-b2ebc2af5fe3",
     "name": "COVAS:NEXT Plugin Pocket TTS",
-    "version": "0.0.14",
+    "version": "0.0.15",
     "author": "lucaelin",
     "repository": "https://github.com/COVAS-Labs/plugin-pocket-tts",
     "description": "Run zero-shot TTS locally using Pocket TTS via a bundled ONNX runtime",
