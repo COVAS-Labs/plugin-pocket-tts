@@ -154,6 +154,14 @@ class PocketTTSModel(TTSModel):
         self._tts: Optional[PocketTTSOnnx] = None
         self._load_lock = threading.Lock()
         self._synthesis_lock = threading.Lock()
+        threading.Thread(target=self._warmup, name="pocket-tts-warmup", daemon=True).start()
+
+    def _warmup(self) -> None:
+        try:
+            next(self.synthesize("Hi.", ""), None)
+            log("info", "PocketTTS warmup complete")
+        except Exception as exc:
+            log("warning", f"PocketTTS warmup failed: {exc}")
 
     def _load_model(self) -> PocketTTSOnnx:
         if self._tts is not None:
@@ -646,7 +654,7 @@ class PocketTTSPlugin(PluginBase):
 if __name__ == "__main__":
     plugin_manifest = PluginManifest(
         name="Pocket TTS Plugin",
-        version="0.0.15",
+        version="0.0.16",
         author="COVAS:NEXT",
         description="Pocket TTS Plugin for COVAS:NEXT",
     )
